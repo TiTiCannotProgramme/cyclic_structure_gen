@@ -96,4 +96,28 @@ mod tests {
         let left_child_ptr = node.borrow().get_left_child().unwrap();
         assert!(left_child_ptr.borrow().is_left_child());
     }
+
+    #[test]
+    fn test_node3_has_both_children() {
+        let node = setup_node3();
+        assert_eq!(node.has_both_children(), false);
+    }
+
+    #[test]
+    fn test_node4_has_both_children() {
+        let node = setup_node4();
+        assert_eq!(node.borrow().has_both_children(), true);
+    }
+
+    #[test]
+    fn test_node3_has_only_left_child() {
+        let node = setup_node3();
+        assert_eq!(node.has_only_left_child(), false);
+    }
+
+    #[test]
+    fn test_node3_has_only_right_child() {
+        let node = setup_node3();
+        assert_eq!(node.has_only_right_child(), true);
+    }
 }

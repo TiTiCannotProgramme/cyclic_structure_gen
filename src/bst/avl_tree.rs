@@ -1,4 +1,4 @@
-use crate::bst::avl_node::{Node, NodePtr};
+use crate::bst::avl_node::{Node, NodePtr, WeakNodePtr};
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::{Rc, Weak};
@@ -32,8 +32,8 @@ impl AvlTree {
         } else {
             leaf_node.borrow_mut().right_child = child_to_add;
         }
-
-        self.update_balance(child_ptr);
+        leaf_node.borrow_mut().set_height();
+        self.update_balance(leaf_node);
     }
 
     fn find_leaf_node_for_insertion(
@@ -82,18 +82,34 @@ impl AvlTree {
 
     fn rebalance(&mut self, node_ptr: NodePtr) {
         if node_ptr.borrow().get_balance_factor() > 0 {
-            if node_ptr.borrow().get_right_child().unwrap().borrow().get_balance_factor() < 0 {
-                self.right_rotate(node_ptr.borrow().get_right_child().unwrap());
-                self.left_rotate(node_ptr)
+            if node_ptr
+                .borrow()
+                .get_right_child()
+                .unwrap()
+                .borrow()
+                .get_balance_factor()
+                < 0
+            {
+                let right_child_ptr = node_ptr.borrow().get_right_child().unwrap();
+                self.right_rotate(right_child_ptr);
+                self.left_rotate(node_ptr);
             } else {
-                self.left_rotate(node_ptr)
+                self.left_rotate(node_ptr);
             }
         } else {
-            if node_ptr.borrow().get_left_child().unwrap().borrow().get_balance_factor() > 0 {
-                self.left_rotate(node_ptr.borrow().get_left_child().unwrap());
-                self.right_rotate(node_ptr)
+            if node_ptr
+                .borrow()
+                .get_left_child()
+                .unwrap()
+                .borrow()
+                .get_balance_factor()
+                > 0
+            {
+                let left_child_ptr = node_ptr.borrow().get_left_child().unwrap();
+                self.left_rotate(left_child_ptr);
+                self.right_rotate(node_ptr);
             } else {
-                self.right_rotate(node_ptr)
+                self.right_rotate(node_ptr);
             }
         }
     }
@@ -111,16 +127,17 @@ impl AvlTree {
         node_ptr.borrow_mut().right_child = new_right_child_ptr_option;
 
         let old_parent = node_ptr.borrow().parent.upgrade();
-
         if old_parent.is_none() {
             old_right_child_ptr.borrow_mut().parent = Weak::new();
             self.root = Some(Rc::clone(&old_right_child_ptr));
         } else if node_ptr.borrow().is_left_child() {
             old_parent.as_ref().unwrap().borrow_mut().left_child =
                 Some(Rc::clone(&old_right_child_ptr));
+            old_right_child_ptr.borrow_mut().parent = Rc::downgrade(&old_parent.as_ref().unwrap());
         } else {
             old_parent.as_ref().unwrap().borrow_mut().right_child =
                 Some(Rc::clone(&old_right_child_ptr));
+            old_right_child_ptr.borrow_mut().parent = Rc::downgrade(&old_parent.as_ref().unwrap());
         }
         old_right_child_ptr.borrow_mut().left_child = Some(Rc::clone(&node_ptr));
         node_ptr.borrow_mut().parent = Rc::downgrade(&old_right_child_ptr);
@@ -149,15 +166,136 @@ impl AvlTree {
         } else if node_ptr.borrow().is_left_child() {
             old_parent.as_ref().unwrap().borrow_mut().left_child =
                 Some(Rc::clone(&old_left_child_ptr));
+            old_left_child_ptr.borrow_mut().parent = Rc::downgrade(&old_parent.as_ref().unwrap());
         } else {
             old_parent.as_ref().unwrap().borrow_mut().right_child =
                 Some(Rc::clone(&old_left_child_ptr));
+            old_left_child_ptr.borrow_mut().parent = Rc::downgrade(&old_parent.as_ref().unwrap());
         }
         old_left_child_ptr.borrow_mut().right_child = Some(Rc::clone(&node_ptr));
         node_ptr.borrow_mut().parent = Rc::downgrade(&old_left_child_ptr);
 
         node_ptr.borrow_mut().set_height();
         old_left_child_ptr.borrow_mut().set_height();
+    }
+
+    pub fn search_tree_by_value(&self, value: isize) -> Option<NodePtr> {
+        if self.root.is_none() {
+            return None;
+        }
+
+        let mut current_node_ptr = Rc::clone(self.root.as_ref().unwrap());
+        let result = loop {
+            if value < current_node_ptr.borrow().value {
+                let left_child_ptr_option = current_node_ptr.borrow().get_left_child();
+                match left_child_ptr_option {
+                    Some(left_child_ptr) => current_node_ptr = left_child_ptr,
+                    None => break None,
+                }
+            } else if value > current_node_ptr.borrow().value {
+                let right_child_ptr_option = current_node_ptr.borrow().get_right_child();
+                match right_child_ptr_option {
+                    Some(right_child_ptr) => current_node_ptr = right_child_ptr,
+                    None => break None,
+                }
+            } else {
+                break Some(current_node_ptr);
+            }
+        };
+        result
+    }
+
+    pub fn get_minimum_child(node_ptr: NodePtr) -> NodePtr {
+        let mut current_node_ptr = node_ptr;
+        loop {
+            let left_child_ptr_option = current_node_ptr.borrow().get_left_child();
+            match left_child_ptr_option {
+                Some(left_child_ptr) => current_node_ptr = left_child_ptr,
+                None => break,
+            }
+        }
+        current_node_ptr
+    }
+
+    pub fn get_maximum_child(node_ptr: NodePtr) -> NodePtr {
+        let mut current_node_ptr = node_ptr;
+        loop {
+            let right_child_ptr_option = current_node_ptr.borrow().get_right_child();
+            match right_child_ptr_option {
+                Some(right_child_ptr) => current_node_ptr = right_child_ptr,
+                None => break,
+            }
+        }
+        current_node_ptr
+    }
+
+    fn delete_root(&mut self) {
+        let root_ptr = Rc::clone(self.root.as_ref().unwrap());
+        if root_ptr.borrow().has_no_child() {
+            self.root = None;
+        } else if root_ptr.borrow().has_only_left_child() {
+            let left_child = root_ptr.borrow().get_left_child().unwrap();
+            left_child.borrow_mut().parent = Weak::new();
+            self.root = Some(left_child);
+        } else if root_ptr.borrow().has_only_right_child() {
+            let right_child = root_ptr.borrow().get_right_child().unwrap();
+            right_child.borrow_mut().parent = Weak::new();
+            self.root = Some(right_child);
+        } else {
+            self.delete_node_with_children(root_ptr);
+        }
+    }
+
+    fn delete_node_with_children(&mut self, node_ptr: NodePtr) {
+        let min_node = AvlTree::get_minimum_child(node_ptr.borrow().get_right_child().unwrap());
+        node_ptr.borrow_mut().value = min_node.borrow().value;
+        node_ptr.borrow_mut().index = min_node.borrow().index;
+        self.delete_node(min_node);
+    }
+
+    // node_ptr must refers to a valid node in the tree
+    pub fn delete_node(&mut self, node_ptr: NodePtr) {
+        if self
+            .root
+            .as_ref()
+            .unwrap()
+            .borrow()
+            .same_structure_to(&node_ptr)
+        {
+            self.delete_root();
+            return;
+        }
+
+        if node_ptr.borrow().has_both_children() {
+            self.delete_node_with_children(node_ptr);
+            return;
+        }
+
+        // Here we know the node_ptr is not the root, so the parent can not be None
+        let parent = node_ptr.borrow().parent.upgrade().unwrap();
+        // Here we know the node_ptr can have at most one child
+        if node_ptr.borrow().has_no_child() {
+            AvlTree::set_new_child(&parent, node_ptr, None);
+        } else if node_ptr.borrow().has_only_left_child() {
+            let node_ptr_left_child = node_ptr.borrow().get_left_child();
+            AvlTree::set_new_child(&parent, node_ptr, node_ptr_left_child);
+        } else {
+            let node_ptr_right_child = node_ptr.borrow().get_right_child();
+            AvlTree::set_new_child(&parent, node_ptr, node_ptr_right_child);
+        }
+        parent.borrow_mut().set_height();
+        self.update_balance(parent);
+    }
+
+    fn set_new_child(parent: &NodePtr, old_child: NodePtr, new_child: Option<NodePtr>) {
+        if new_child.is_some() {
+            new_child.as_ref().unwrap().borrow_mut().parent = Rc::downgrade(parent);
+        }
+        if old_child.borrow().is_left_child() {
+            parent.borrow_mut().left_child = new_child;
+        } else {
+            parent.borrow_mut().right_child = new_child;
+        }
     }
 }
 
@@ -177,4 +315,26 @@ pub fn convert_node_to_vec(node_ptr: NodePtr) -> VecDeque<isize> {
     }
 
     value_vec
+}
+
+pub fn build_free_from_values(values_list: Vec<isize>) -> AvlTree {
+    let mut tree = AvlTree::new();
+    for value in values_list.iter() {
+        tree.insert(Node::new(0, *value));
+    }
+    tree
+}
+
+pub fn build_free_from_index_and_values(
+    values_list: Vec<isize>,
+    index_list: Vec<isize>,
+) -> AvlTree {
+    if values_list.len() != index_list.len() {
+        panic!("index list and value list must have the same length");
+    }
+    let mut tree = AvlTree::new();
+    for (index, value) in index_list.iter().zip(values_list.iter()) {
+        tree.insert(Node::new(*index, *value));
+    }
+    tree
 }

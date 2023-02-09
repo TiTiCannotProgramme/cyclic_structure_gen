@@ -36,8 +36,14 @@ impl Node {
         }
     }
 
-    fn same_index_value_to(&self, node_ptr: &NodePtr) -> bool {
-        self.index == node_ptr.borrow().index && self.value == node_ptr.borrow().value
+    pub fn same_structure_to(&self, node_ptr: &NodePtr) -> bool {
+        let same_index_value =
+            self.index == node_ptr.borrow().index && self.value == node_ptr.borrow().value;
+        let same_children_structure = self.get_left_child().is_none()
+            == node_ptr.borrow().get_left_child().is_none()
+            && self.get_right_child().is_none() == node_ptr.borrow().get_right_child().is_none();
+        let same_parent_structure = self.parent.upgrade().is_none() == node_ptr.borrow().parent.upgrade().is_none();
+        same_index_value && same_children_structure && same_parent_structure
     }
 
     fn get_left_child_height(&self) -> isize {
@@ -96,5 +102,21 @@ impl Node {
 
     pub fn is_right_child(&self) -> bool {
         !self.is_left_child()
+    }
+
+    pub fn has_both_children(&self) -> bool {
+        self.left_child.is_some() && self.right_child.is_some()
+    }
+
+    pub fn has_no_child(&self) -> bool {
+        self.left_child.is_none() && self.right_child.is_none()
+    }
+
+    pub fn has_only_left_child(&self) -> bool {
+        !self.has_both_children() && self.left_child.is_some()
+    }
+
+    pub fn has_only_right_child(&self) -> bool {
+        !self.has_both_children() && self.right_child.is_some()
     }
 }
